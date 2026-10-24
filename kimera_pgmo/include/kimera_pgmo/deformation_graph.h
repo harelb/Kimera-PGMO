@@ -44,6 +44,16 @@ class DeformationGraph {
   using RobotTimestampMap = std::map<char, std::vector<Timestamp>>;
   using DeformationCallback = std::function<void(const Eigen::Isometry3d&, size_t)>;
   using NodeMeasurements = std::vector<std::pair<gtsam::Key, gtsam::Pose3>>;
+
+  //! Absolute position of a point rigidly attached to a pose node (e.g. a GPS antenna)
+  struct PositionMeasurement {
+    gtsam::Key key;
+    gtsam::Point3 world_t_sensor;
+    Eigen::Matrix3d covariance;
+    gtsam::Point3 body_t_sensor = gtsam::Point3::Zero();
+    bool known_inlier = false;
+  };
+  using PositionMeasurements = std::vector<PositionMeasurement>;
   using MeshEdges = std::vector<std::pair<gtsam::Key, gtsam::Key>>;
   using MeshNodeStamps = std::unordered_map<gtsam::Key, Timestamp>;
 
@@ -86,6 +96,14 @@ class DeformationGraph {
    */
   void processNodeMeasurements(const NodeMeasurements& measurements,
                                double variance = 1e-4);
+
+  /**
+   * Add absolute position priors (e.g. GPS) on existing pose nodes. Unlike
+   * processNodeMeasurements, this does not overwrite the current estimate.
+   * @param measurements position measurements; nodes not in the graph are skipped
+   * @return number of priors added
+   */
+  size_t processPositionMeasurements(const PositionMeasurements& measurements);
 
   /**
    * Add a new pose node to the deformation graph
@@ -250,6 +268,11 @@ class DeformationGraph {
    *  - prefix: prefix of nodes to remove prior
    */
   void removePriorsWithPrefix(char prefix);
+
+  /*! \brief Remove all position priors of nodes that have given prefix
+   *  - prefix: prefix of nodes to remove position priors from
+   */
+  void removePositionPriorsWithPrefix(char prefix);
 
   /*! \brief Get the optimized estimates for nodes with certain prefix
    *  - prefix: prefix of the nodes to query best estimate

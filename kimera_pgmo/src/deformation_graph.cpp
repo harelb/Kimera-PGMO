@@ -15,6 +15,7 @@
 #include <cmath>
 
 #include "kimera_pgmo/deformation_edge_factor.h"
+#include "kimera_pgmo/position_prior_factor.h"
 #include "kimera_pgmo/utils/common_functions.h"
 
 namespace kimera_pgmo {
@@ -839,6 +840,50 @@ void DeformationGraph::processNewTempNodesValences(const NodeValenceInfoList& in
                          true,
                          false);
     }
+  }
+}
+
+size_t DeformationGraph::processPositionMeasurements(
+    const PositionMeasurements& measurements) {
+  size_t num_added = 0;
+  for (const auto& measurement : measurements) {
+    if (!values_.exists(measurement.key)) {
+      SPARK_LOG(WARNING) << "DeformationGraph: skipping position measurement for unknown node "
+                         << gtsam::DefaultKeyFormatter(measurement.key);
+      continue;
+    }
+
+    const auto noise = gtsam::noiseModel::Gaussian::Covariance(measurement.covariance);
+    if (measurement.known_inlier) {
+      known_inliers_.insert(nfg_.size());
+    }
+
+    nfg_.add(PositionPriorFactor(measurement.key,
+                                 measurement.world_t_sensor,
+                                 measurement.body_t_sensor,
+                                 noise));
+    ++num_added;
+  }
+
+  return num_added;
+}
+
+void DeformationGraph::removePositionPriorsWithPrefix(char prefix) {
+  const gtsam::NonlinearFactorGraph nfg_copy = nfg_;
+  const std::set<size_t> known_inliers_copy = known_inliers_;
+  nfg_ = gtsam::NonlinearFactorGraph();
+  known_inliers_.clear();
+  for (size_t i = 0; i < nfg_copy.size(); ++i) {
+    const auto& factor = nfg_copy[i];
+    const auto prior = dynamic_cast<const PositionPriorFactor*>(factor.get());
+    if (prior && gtsam::Symbol(prior->key()).chr() == prefix) {
+      continue;
+    }
+
+    if (known_inliers_copy.count(i)) {
+      known_inliers_.insert(nfg_.size());
+    }
+    nfg_.add(factor);
   }
 }
 
