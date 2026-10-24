@@ -567,13 +567,14 @@ void DeformationGraph::deformPoints(CloudOut& vertices,
     return;
   }
 
+  // a non-positive start index (the default hint is -1) deforms every vertex
   std::vector<size_t> to_deform;
-  if (start_idx != 0) {
+  if (start_idx > 0) {
     to_deform.resize(traits::num_vertices(vertices) - start_idx);
     std::iota(to_deform.begin(), to_deform.end(), start_idx);
   }
 
-  const std::vector<size_t>* indices_ptr = start_idx == 0 ? nullptr : &to_deform;
+  const std::vector<size_t>* indices_ptr = start_idx > 0 ? &to_deform : nullptr;
   deformation::deformPoints(vertices,
                             old_vertices,
                             prefix,

@@ -232,6 +232,26 @@ TEST(TestDeformationGraph, deformMeshTranslation) {
   ComparePointcloud(expected, result, 1e-6);
 }
 
+TEST(TestDeformationGraph, deformPointsDefaultStartHint) {
+  DeformationGraph graph;
+  SetUpDeformationGraph(&graph);
+
+  auto original = makePartialCube();
+  gtsam::Pose3 distortion(gtsam::Rot3(), gtsam::Point3(1.5, 0.0, 0.0));
+  std::vector<std::pair<gtsam::Key, gtsam::Pose3>> node_distortions;
+  node_distortions.push_back({"v1"_id, distortion});
+  graph.processNodeMeasurements(node_distortions, 1e-10);
+  OptimizeOnce(graph);
+
+  const auto expected = deformVertices(graph, original, 'v', 2);
+  // the default start hint (-1) deforms every vertex, like an explicit 0
+  for (const int hint : {-1, 0}) {
+    std::vector<traits::Vertex> result = original;
+    graph.deformPoints(result, original, 'v', 2, 10.0, hint);
+    ComparePointcloud(expected, result, 1e-6);
+  }
+}
+
 TEST(TestDeformationGraph, deformMesh) {
   const auto original = makeCube();
   std::vector<traits::Vertex> expected;
