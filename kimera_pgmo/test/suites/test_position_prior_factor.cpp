@@ -68,6 +68,59 @@ TEST(TestPositionPriorFactor, leverArm) {
                 offset.evaluateError(Pose3(Rot3::Ypr(0.5, -0.1, 0.2), Point3(1, 2, 3))));
 }
 
+TEST(TestUpVectorPriorFactor, jacobianAndYawInvariance) {
+  const auto noise = gtsam::noiseModel::Isotropic::Sigma(3, 0.01);
+  UpVectorPriorFactor factor(1, Point3(0, 0, 1), noise);
+  // yaw and translation are free
+  const Pose3 level(Rot3::Yaw(1.3), Point3(5, -2, 7));
+  EXPECT_TRUE(gtsam::assert_equal(gtsam::Vector3::Zero(), factor.evaluateError(level), 1e-12));
+
+  const Pose3 tilted(Rot3::Ypr(0.4, 0.2, -0.1), Point3(1, 2, 3));
+  gtsam::Matrix H_actual;
+#if GTSAM_VERSION_MAJOR <= 4 && GTSAM_VERSION_MINOR < 3
+  factor.evaluateError(tilted, H_actual);
+#else
+  factor.evaluateError(tilted, &H_actual);
+#endif
+  const auto H_expected = gtsam::numericalDerivative11<gtsam::Vector, Pose3>(
+      [&](const Pose3& p) { return factor.evaluateError(p); }, tilted, 1.0e-5);
+  EXPECT_TRUE(gtsam::assert_equal(H_expected, H_actual, 1.0e-5));
+}
+
+TEST(TestDeformationGraph, upVectorPriorsPreventTilt) {
+  // position priors with an unconstrained altitude leave the tilt of a straight-line
+  // trajectory free; up vector priors fix roll / pitch
+  DeformationGraph graph;
+  DeformationGraph::PositionMeasurements measurements;
+  std::vector<std::pair<gtsam::Key, Point3>> ups;
+  const Pose3 initial_tilt(Rot3::Ypr(0.0, 0.3, 0.2), Point3::Zero());
+  for (size_t i = 0; i < 4; ++i) {
+    const gtsam::Symbol key('a', i);
+    const Pose3 truth(Rot3(), Point3(2.0 * i, 0, 0));
+    graph.addNewNode(key, i, initial_tilt * truth, false);
+    if (i > 0) {
+      graph.processNewBetween(gtsam::Symbol('a', i - 1), key, Pose3(Rot3(), Point3(2, 0, 0)), 1e-6);
+    }
+    auto& meas = measurements.emplace_back();
+    meas.key = key;
+    meas.world_t_sensor = truth.translation();
+    meas.covariance = Eigen::Vector3d(1e-4, 1e-4, 1e4).asDiagonal();
+    ups.emplace_back(key, Point3::UnitZ());
+  }
+
+  graph.processPositionMeasurements(measurements);
+  EXPECT_EQ(4u, graph.processUpVectorPriors(ups, 0.01));
+  const auto result = optimize(graph);
+  for (size_t i = 0; i < 4; ++i) {
+    const auto pose = result.at<Pose3>(gtsam::Symbol('a', i));
+    EXPECT_NEAR(0.0, pose.rotation().roll(), 1e-3);
+    EXPECT_NEAR(0.0, pose.rotation().pitch(), 1e-3);
+  }
+
+  graph.removePositionPriorsWithPrefix('a');
+  EXPECT_EQ(3u, graph.getFactors()->size());
+}
+
 TEST(TestDeformationGraph, positionPriorsAlignTrajectory) {
   // ground truth: robot drives along world x with a lever-armed antenna
   const Point3 lever(-0.22, 0.0, 0.54);
@@ -175,6 +228,15 @@ TEST(TestDeformationGraph, savePositionPriors) {
   const auto noise = dynamic_cast<const gtsam::noiseModel::Gaussian*>(prior->noiseModel().get());
   ASSERT_TRUE(noise != nullptr);
   EXPECT_TRUE(gtsam::assert_equal(gtsam::Matrix(measurements[0].covariance), noise->covariance(), 1e-9));
+
+  // up vector priors round-trip too
+  graph.processUpVectorPriors({{gtsam::Symbol('a', 0), Point3(0.1, 0, 1)}}, 0.02);
+  graph.save(path);
+  const auto with_up = DeformationGraph::load(path);
+  ASSERT_EQ(2u, with_up->getFactors()->size());
+  const auto up = dynamic_cast<const UpVectorPriorFactor*>(with_up->getFactors()->at(1).get());
+  ASSERT_TRUE(up != nullptr);
+  EXPECT_TRUE(gtsam::assert_equal(Point3(0.1, 0, 1).normalized(), up->bodyUp(), 1e-9));
 
   const auto without_priors = DeformationGraph::load(path, false);
   ASSERT_TRUE(without_priors);

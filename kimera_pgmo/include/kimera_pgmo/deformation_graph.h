@@ -106,6 +106,16 @@ class DeformationGraph {
   size_t processPositionMeasurements(const PositionMeasurements& measurements);
 
   /**
+   * Add gravity direction priors (roll / pitch only) on existing pose nodes: each
+   * body-frame up vector must map onto the world z axis.
+   * @param body_ups key -> up vector in the body frame; nodes not in the graph are skipped
+   * @param sigma standard deviation of the up vector error (~radians for small tilts)
+   * @return number of priors added
+   */
+  size_t processUpVectorPriors(const std::vector<std::pair<gtsam::Key, gtsam::Point3>>& body_ups,
+                               double sigma);
+
+  /**
    * Add a new pose node to the deformation graph
    * @param key Key of pose node
    * @param stamp Timestamp of pose node
@@ -269,7 +279,7 @@ class DeformationGraph {
    */
   void removePriorsWithPrefix(char prefix);
 
-  /*! \brief Remove all position priors of nodes that have given prefix
+  /*! \brief Remove all position and up vector priors of nodes that have given prefix
    *  - prefix: prefix of nodes to remove position priors from
    */
   void removePositionPriorsWithPrefix(char prefix);

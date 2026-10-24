@@ -212,6 +212,13 @@ void save_factor(json& record, const PositionPriorFactor& prior) {
   record["body_t_sensor"] = prior.bodyTSensor();
 }
 
+void save_factor(json& record, const UpVectorPriorFactor& prior) {
+  save_noise(record, prior);
+  record["type"] = "up_prior";
+  record["key"] = prior.key();
+  record["body_up"] = prior.bodyUp();
+}
+
 void save_factor_graph(json& graph_record, const gtsam::NonlinearFactorGraph& graph) {
   for (const auto& factor : graph) {
     if (!factor) {
@@ -240,6 +247,12 @@ void save_factor_graph(json& graph_record, const gtsam::NonlinearFactorGraph& gr
     const auto position_prior = cast_to_ptr<const PositionPriorFactor>(factor);
     if (position_prior) {
       save_factor(record, *position_prior);
+      continue;
+    }
+
+    const auto up_prior = cast_to_ptr<const UpVectorPriorFactor>(factor);
+    if (up_prior) {
+      save_factor(record, *up_prior);
       continue;
     }
 
@@ -310,6 +323,17 @@ void add_factor(const json& factor,
     const auto body_t_sensor = factor.at("body_t_sensor").get<gtsam::Point3>();
     const auto noise = load_noise(factor);
     graph.add(PositionPriorFactor(key, measurement, body_t_sensor, noise));
+    return;
+  }
+
+  if (type == "up_prior") {
+    if (!include_priors) {
+      return;
+    }
+
+    const auto key = get_mapped_key(factor, "key", new_robot_id);
+    const auto body_up = factor.at("body_up").get<gtsam::Point3>();
+    graph.add(UpVectorPriorFactor(key, body_up, load_noise(factor)));
     return;
   }
 

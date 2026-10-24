@@ -868,6 +868,24 @@ size_t DeformationGraph::processPositionMeasurements(
   return num_added;
 }
 
+size_t DeformationGraph::processUpVectorPriors(
+    const std::vector<std::pair<gtsam::Key, gtsam::Point3>>& body_ups, double sigma) {
+  const auto noise = gtsam::noiseModel::Isotropic::Sigma(3, sigma);
+  size_t num_added = 0;
+  for (const auto& [key, body_up] : body_ups) {
+    if (!values_.exists(key)) {
+      SPARK_LOG(WARNING) << "DeformationGraph: skipping up vector prior for unknown node "
+                         << gtsam::DefaultKeyFormatter(key);
+      continue;
+    }
+
+    nfg_.add(UpVectorPriorFactor(key, body_up, noise));
+    ++num_added;
+  }
+
+  return num_added;
+}
+
 void DeformationGraph::removePositionPriorsWithPrefix(char prefix) {
   const gtsam::NonlinearFactorGraph nfg_copy = nfg_;
   const std::set<size_t> known_inliers_copy = known_inliers_;
@@ -876,7 +894,9 @@ void DeformationGraph::removePositionPriorsWithPrefix(char prefix) {
   for (size_t i = 0; i < nfg_copy.size(); ++i) {
     const auto& factor = nfg_copy[i];
     const auto prior = dynamic_cast<const PositionPriorFactor*>(factor.get());
-    if (prior && gtsam::Symbol(prior->key()).chr() == prefix) {
+    const auto up = dynamic_cast<const UpVectorPriorFactor*>(factor.get());
+    if ((prior && gtsam::Symbol(prior->key()).chr() == prefix) ||
+        (up && gtsam::Symbol(up->key()).chr() == prefix)) {
       continue;
     }
 

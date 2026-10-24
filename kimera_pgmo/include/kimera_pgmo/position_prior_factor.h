@@ -56,6 +56,40 @@ class PositionPriorFactor : public gtsam::NoiseModelFactor1<gtsam::Pose3> {
   }
 };
 
+/*! \brief Gravity direction prior: a body-frame up vector must map onto the world up
+ * axis, i.e. world_R_body * body_up = (0, 0, 1). Constrains roll and pitch only, so a
+ * trajectory anchored by position priors cannot tilt about a horizontal axis.
+ */
+class UpVectorPriorFactor : public gtsam::NoiseModelFactor1<gtsam::Pose3> {
+ private:
+  gtsam::Point3 body_up_;
+
+ public:
+  UpVectorPriorFactor(gtsam::Key key, const gtsam::Point3& body_up, gtsam::SharedNoiseModel model)
+      : gtsam::NoiseModelFactor1<gtsam::Pose3>(model, key), body_up_(body_up.normalized()) {}
+
+  virtual ~UpVectorPriorFactor() {}
+
+  gtsam::Vector evaluateError(const gtsam::Pose3& pose,
+                              PositionPriorJacobianType H = JACOBIAN_DEFAULT) const override {
+    gtsam::Matrix33 H_rot;
+    const gtsam::Point3 world_up = pose.rotation().rotate(body_up_, H_rot);
+    if (H) {
+      gtsam::Matrix36 H_pose = gtsam::Matrix36::Zero();
+      H_pose.leftCols<3>() = H_rot;
+      *H = H_pose;
+    }
+
+    return world_up - gtsam::Point3::UnitZ();
+  }
+
+  inline const gtsam::Point3& bodyUp() const { return body_up_; }
+
+  gtsam::NonlinearFactor::shared_ptr clone() const override {
+    return gtsam::NonlinearFactor::shared_ptr(new UpVectorPriorFactor(*this));
+  }
+};
+
 #undef JACOBIAN_DEFAULT
 
 }  // namespace kimera_pgmo
