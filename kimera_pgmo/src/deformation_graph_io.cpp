@@ -16,6 +16,7 @@
 
 #include "kimera_pgmo/deformation_edge_factor.h"
 #include "kimera_pgmo/deformation_graph.h"
+#include "kimera_pgmo/position_prior_factor.h"
 #include "kimera_pgmo/utils/common_functions.h"
 #include "kimera_pgmo/utils/logging.h"
 
@@ -203,6 +204,14 @@ void save_factor(json& record, const gtsam::PriorFactor<gtsam::Pose3>& prior) {
   record["measurement"] = prior.prior();
 }
 
+void save_factor(json& record, const PositionPriorFactor& prior) {
+  save_noise(record, prior);
+  record["type"] = "position_prior";
+  record["key"] = prior.key();
+  record["measurement"] = prior.measurement();
+  record["body_t_sensor"] = prior.bodyTSensor();
+}
+
 void save_factor_graph(json& graph_record, const gtsam::NonlinearFactorGraph& graph) {
   for (const auto& factor : graph) {
     if (!factor) {
@@ -225,6 +234,12 @@ void save_factor_graph(json& graph_record, const gtsam::NonlinearFactorGraph& gr
     const auto prior = cast_to_ptr<const gtsam::PriorFactor<gtsam::Pose3>>(factor);
     if (prior) {
       save_factor(record, *prior);
+      continue;
+    }
+
+    const auto position_prior = cast_to_ptr<const PositionPriorFactor>(factor);
+    if (position_prior) {
+      save_factor(record, *position_prior);
       continue;
     }
 
@@ -282,6 +297,19 @@ void add_factor(const json& factor,
     const auto prior = factor.at("measurement").get<gtsam::Pose3>();
     const auto noise = load_noise(factor);
     graph.add(gtsam::PriorFactor<gtsam::Pose3>(key, prior, noise));
+    return;
+  }
+
+  if (type == "position_prior") {
+    if (!include_priors) {
+      return;
+    }
+
+    const auto key = get_mapped_key(factor, "key", new_robot_id);
+    const auto measurement = factor.at("measurement").get<gtsam::Point3>();
+    const auto body_t_sensor = factor.at("body_t_sensor").get<gtsam::Point3>();
+    const auto noise = load_noise(factor);
+    graph.add(PositionPriorFactor(key, measurement, body_t_sensor, noise));
     return;
   }
 

@@ -8,6 +8,8 @@
 #include <gtsam/inference/Symbol.h>
 #include <kimera_rpgo/rpgo.h>
 
+#include <filesystem>
+
 #include "kimera_pgmo/deformation_graph.h"
 #include "kimera_pgmo/position_prior_factor.h"
 
@@ -146,6 +148,38 @@ TEST(TestDeformationGraph, removePositionPriorsWithPrefix) {
   const auto inliers = graph.getKnownInlierSet();
   ASSERT_EQ(1u, inliers->size());
   EXPECT_EQ(factors->size() - 1, *inliers->begin());
+}
+
+TEST(TestDeformationGraph, savePositionPriors) {
+  DeformationGraph graph;
+  graph.addNewNode(gtsam::Symbol('a', 0), 0, Pose3(), false);
+  DeformationGraph::PositionMeasurements measurements(1);
+  measurements[0].key = gtsam::Symbol('a', 0);
+  measurements[0].world_t_sensor = Point3(1, 2, 3);
+  measurements[0].covariance = Eigen::Vector3d(0.1, 0.2, 100.0).asDiagonal();
+  measurements[0].body_t_sensor = Point3(-0.22, 0.0, 0.54);
+  ASSERT_EQ(1u, graph.processPositionMeasurements(measurements));
+
+  const auto path = std::filesystem::temp_directory_path() / "kimera_pgmo_position_prior.json";
+  graph.save(path);
+
+  const auto with_priors = DeformationGraph::load(path);
+  ASSERT_TRUE(with_priors);
+  const auto factors = with_priors->getFactors();
+  ASSERT_EQ(1u, factors->size());
+  const auto prior = dynamic_cast<const PositionPriorFactor*>(factors->at(0).get());
+  ASSERT_TRUE(prior != nullptr);
+  EXPECT_EQ(gtsam::Symbol('a', 0).key(), prior->key());
+  EXPECT_TRUE(gtsam::assert_equal(Point3(1, 2, 3), prior->measurement()));
+  EXPECT_TRUE(gtsam::assert_equal(Point3(-0.22, 0.0, 0.54), prior->bodyTSensor()));
+  const auto noise = dynamic_cast<const gtsam::noiseModel::Gaussian*>(prior->noiseModel().get());
+  ASSERT_TRUE(noise != nullptr);
+  EXPECT_TRUE(gtsam::assert_equal(gtsam::Matrix(measurements[0].covariance), noise->covariance(), 1e-9));
+
+  const auto without_priors = DeformationGraph::load(path, false);
+  ASSERT_TRUE(without_priors);
+  EXPECT_EQ(0u, without_priors->getFactors()->size());
+  std::filesystem::remove(path);
 }
 
 }  // namespace kimera_pgmo
