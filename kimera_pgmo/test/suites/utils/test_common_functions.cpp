@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <set>
+
 #include "kimera_pgmo/utils/common_functions.h"
 
 namespace kimera_pgmo {
@@ -29,6 +31,23 @@ TEST(CommonFunctions, remapFace) {
     const traits::Face expected{2, 1, 5};
     EXPECT_EQ(remapFace(orig, 1, remapping), expected);
   }
+}
+
+TEST(CommonFunctions, robotPrefixes) {
+  // every robot has a pose and a vertex prefix, the inverse maps agree, and no character is
+  // used twice (a pose prefix of one robot must never be a vertex prefix of another)
+  EXPECT_EQ(robot_id_to_prefix.size(), 15u);
+  EXPECT_EQ(robot_id_to_vertex_prefix.size(), robot_id_to_prefix.size());
+  std::set<char> used;
+  for (const auto& [robot_id, prefix] : robot_id_to_prefix) {
+    EXPECT_EQ(GetRobotPrefix(robot_id), prefix);
+    EXPECT_EQ(robot_prefix_to_id.at(prefix), robot_id);
+    const char vertex_prefix = GetVertexPrefix(robot_id);
+    EXPECT_EQ(vertex_prefix_to_id.at(vertex_prefix), robot_id);
+    EXPECT_TRUE(used.insert(prefix).second) << prefix;
+    EXPECT_TRUE(used.insert(vertex_prefix).second) << vertex_prefix;
+  }
+  EXPECT_EQ(GetRobotPrefix(15), '\0');
 }
 
 TEST(CommonFunctions, allVerticesBelow) {

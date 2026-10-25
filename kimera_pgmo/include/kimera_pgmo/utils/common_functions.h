@@ -14,6 +14,9 @@
 
 namespace kimera_pgmo {
 
+// Robots 0-7 keep their original prefixes. Robots 8-14 use characters that no other
+// key of the deformation graph or Hydra scene graph uses (Hydra layers take O P p Q l f G r R
+// B t s; mesh vertices of robots 0-7 take s-z).
 const std::map<size_t, char> robot_id_to_prefix = {
     {0, 'a'},
     {1, 'b'},
@@ -23,6 +26,13 @@ const std::map<size_t, char> robot_id_to_prefix = {
     {5, 'f'},
     {6, 'g'},
     {7, 'h'},
+    {8, 'i'},
+    {9, 'j'},
+    {10, 'k'},
+    {11, 'm'},
+    {12, 'n'},
+    {13, 'o'},
+    {14, 'q'},
 };
 
 const std::map<char, size_t> robot_prefix_to_id = {
@@ -34,6 +44,13 @@ const std::map<char, size_t> robot_prefix_to_id = {
     {'f', 5},
     {'g', 6},
     {'h', 7},
+    {'i', 8},
+    {'j', 9},
+    {'k', 10},
+    {'m', 11},
+    {'n', 12},
+    {'o', 13},
+    {'q', 14},
 };
 
 const std::map<size_t, char> robot_id_to_vertex_prefix = {
@@ -45,6 +62,13 @@ const std::map<size_t, char> robot_id_to_vertex_prefix = {
     {5, 'x'},
     {6, 'y'},
     {7, 'z'},
+    {8, 'C'},
+    {9, 'D'},
+    {10, 'E'},
+    {11, 'H'},
+    {12, 'I'},
+    {13, 'J'},
+    {14, 'K'},
 };
 
 const std::map<char, size_t> vertex_prefix_to_id = {
@@ -56,6 +80,13 @@ const std::map<char, size_t> vertex_prefix_to_id = {
     {'x', 5},
     {'y', 6},
     {'z', 7},
+    {'C', 8},
+    {'D', 9},
+    {'E', 10},
+    {'H', 11},
+    {'I', 12},
+    {'J', 13},
+    {'K', 14},
 };
 
 /*! \brief Get gtsam prefix for a robot id
