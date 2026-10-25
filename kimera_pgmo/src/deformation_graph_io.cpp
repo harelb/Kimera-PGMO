@@ -356,6 +356,15 @@ void DeformationGraph::save(const std::string& filename) const {
     auto& record = root["vertices"][std::string(1, prefix)];
     record["pos"] = vertices;
     record["stamps"] = vertex_stamps_.at(prefix);
+    const auto rotations = vertex_rotations_.find(prefix);
+    if (rotations != vertex_rotations_.end()) {
+      // initial rotations (only stored when not all identity), as [qw, qx, qy, qz]
+      auto& rot_record = record["rot"] = json::array();
+      for (const auto& rot : rotations->second) {
+        const auto q = rot.toQuaternion();
+        rot_record.push_back({q.w(), q.x(), q.y(), q.z()});
+      }
+    }
   }
 
   root["values"] = json::array();
@@ -426,6 +435,14 @@ DeformationGraph::Ptr DeformationGraph::load(const std::filesystem::path& filepa
 
     record.at("pos").get_to(graph->vertex_positions_[vertex_prefix]);
     record.at("stamps").get_to(graph->vertex_stamps_[vertex_prefix]);
+    if (record.contains("rot")) {
+      auto& rotations = graph->vertex_rotations_[vertex_prefix];
+      rotations.clear();
+      for (const auto& q : record.at("rot")) {
+        rotations.push_back(gtsam::Rot3::Quaternion(
+            q.at(0).get<double>(), q.at(1).get<double>(), q.at(2).get<double>(), q.at(3).get<double>()));
+      }
+    }
   }
 
   for (const auto& record : data.at("values")) {

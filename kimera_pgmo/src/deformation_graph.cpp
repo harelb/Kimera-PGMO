@@ -677,6 +677,18 @@ bool DeformationGraph::addNewMeshNode(const gtsam::Key& node_key,
 
   vertex_positions_[node_prefix].push_back(node_pose.translation());
   vertex_stamps_[node_prefix].push_back(node_stamp);
+  // Mesh deformation treats a control point's value as its deformation unless the initial
+  // rotation is recorded: track it once any node of the prefix is not axis-aligned
+  auto rotations = vertex_rotations_.find(node_prefix);
+  if (rotations == vertex_rotations_.end() &&
+      !node_pose.rotation().equals(gtsam::Rot3(), 1.0e-9)) {
+    rotations = vertex_rotations_.emplace(node_prefix, std::vector<gtsam::Rot3>()).first;
+    rotations->second.resize(node_idx);  // earlier nodes: identity
+  }
+
+  if (rotations != vertex_rotations_.end()) {
+    rotations->second.push_back(node_pose.rotation());
+  }
   // TODO(Yun) temporary hack, check if this assumption always valid even with poses
   if (add_init_vertex_prior_ && values_.size() == 0) {
     addPrior(node_key, node_pose, 1e-3, false, true);
@@ -1063,6 +1075,12 @@ std::vector<Timestamp> DeformationGraph::getVertexStamps(char prefix) const {
   return vertex_stamps_.at(prefix);
 }
 
+const std::vector<gtsam::Rot3>* DeformationGraph::getInitialRotationsVertices(
+    char prefix) const {
+  const auto iter = vertex_rotations_.find(prefix);
+  return iter == vertex_rotations_.end() ? nullptr : &iter->second;
+}
+
 bool DeformationGraph::hasVertexKey(char prefix) const {
   return vertex_positions_.count(prefix);
 }
@@ -1086,6 +1104,7 @@ void DeformationGraph::clear() {
 
   vertex_positions_.clear();
   vertex_stamps_.clear();
+  vertex_rotations_.clear();
 
   nfg_.resize(0);
   known_inliers_.clear();
@@ -1105,6 +1124,7 @@ void DeformationGraph::clear() {
 void DeformationGraph::clearMeshNodesOnly() {
   vertex_positions_.clear();
   vertex_stamps_.clear();
+  vertex_rotations_.clear();
   adjacency_map_.clear();
 
   // Remove mesh vertices from values_

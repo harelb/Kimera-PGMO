@@ -866,4 +866,59 @@ TEST(TestDeformationGraph, processPoseMeshGraph) {
   }
 }
 
+TEST(TestDeformationGraph, deformTransformedMeshGraph) {
+  // mesh graph added with a robot-to-world transform (as hydra_multi does): the mesh
+  // nodes start with the transform's rotation, which is not a deformation
+  DeformationGraph graph;
+  SetUpDeformationGraph(&graph);
+  const auto mesh_graph = graph.getPoseGraph(true, false);
+
+  std::map<pose_graph_tools::PoseGraphEdge::Type, double> variance_map;
+  variance_map[pose_graph_tools::PoseGraphEdge::Type::MESH] = 0.01;
+
+  Eigen::Isometry3d world_T_robot = Eigen::Isometry3d::Identity();
+  world_T_robot.linear() =
+      Eigen::AngleAxisd(160.0 * M_PI / 180.0, Eigen::Vector3d::UnitZ()).toRotationMatrix();
+  world_T_robot.translation() << 100.0, -50.0, 2.0;
+
+  DeformationGraph world_graph;
+  world_graph.processMeshGraph(*mesh_graph, variance_map, {}, &world_T_robot);
+  ASSERT_NE(world_graph.getInitialRotationsVertices('v'), nullptr);
+  EXPECT_EQ(world_graph.getInitialRotationsVertices('v')->size(), 3u);
+  // a graph without rotated mesh nodes keeps the identity-rotation path
+  EXPECT_EQ(graph.getInitialRotationsVertices('v'), nullptr);
+
+  std::vector<traits::Vertex> original = makePartialCube();
+  for (auto& p : original) {
+    p.pos = (world_T_robot.cast<float>() * p.pos).eval();
+  }
+
+  // initial values: no deformation
+  ComparePointcloud(original, deformVertices(world_graph, original, 'v', 2), 1e-4);
+
+  // translate every control point: every point is translated
+  gtsam::Values shifted;
+  const gtsam::Point3 shift(1.0, -2.0, 0.5);
+  for (const auto& key_value : *world_graph.getValues()) {
+    const auto pose = key_value.value.cast<gtsam::Pose3>();
+    shifted.insert(key_value.key, gtsam::Pose3(pose.rotation(), pose.translation() + shift));
+  }
+  world_graph.updateValues(shifted);
+  std::vector<traits::Vertex> expected = original;
+  for (auto& p : expected) {
+    p.pos += shift.cast<float>();
+  }
+  ComparePointcloud(expected, deformVertices(world_graph, original, 'v', 2), 1e-4);
+
+  // the initial rotations survive saving and loading
+  const std::filesystem::path dgraph_path(std::string(DATASET_PATH) +
+                                          "/rotated_graph.json");
+  world_graph.save(dgraph_path);
+  const auto loaded = DeformationGraph::load(dgraph_path);
+  std::filesystem::remove(dgraph_path);
+  ASSERT_TRUE(loaded);
+  ASSERT_NE(loaded->getInitialRotationsVertices('v'), nullptr);
+  ComparePointcloud(expected, deformVertices(*loaded, original, 'v', 2), 1e-4);
+}
+
 }  // namespace kimera_pgmo

@@ -75,7 +75,8 @@ Eigen::Isometry3d interpDeformation(char prefix,
                                     const gtsam::Values& values,
                                     const SearchTree& tree,
                                     size_t k,
-                                    const traits::Pos& old_point) {
+                                    const traits::Pos& old_point,
+                                    const std::vector<gtsam::Rot3>* control_rotations) {
   // Query octree
   std::vector<int> nn_index;
   std::vector<float> nn_sq_dist;
@@ -95,7 +96,11 @@ Eigen::Isometry3d interpDeformation(char prefix,
     weight_sum += w;
 
     const auto local_tf = values.at<gtsam::Pose3>(gtsam::Symbol(prefix, nn_index[j]));
-    const auto local_rot = local_tf.rotation();
+    // rotation of the control point's deformation: value * initial^-1
+    const auto local_rot =
+        control_rotations
+            ? local_tf.rotation().compose(control_rotations->at(nn_index[j]).inverse())
+            : local_tf.rotation();
     q += w * local_rot.toQuaternion().coeffs();
     t += w * (local_tf.translation() - local_rot * control_points.at(nn_index[j]));
   }
@@ -112,9 +117,29 @@ traits::Pos interpPoint(char prefix,
                         const gtsam::Values& values,
                         const SearchTree& tree,
                         size_t k,
-                        const traits::Pos& vi) {
-  const auto new_T_old = interpDeformation(prefix, control_points, values, tree, k, vi);
+                        const traits::Pos& vi,
+                        const std::vector<gtsam::Rot3>* control_rotations) {
+  const auto new_T_old =
+      interpDeformation(prefix, control_points, values, tree, k, vi, control_rotations);
   return new_T_old.cast<float>() * vi;
+}
+
+Eigen::Isometry3d interpDeformation(char prefix,
+                                    const std::vector<gtsam::Point3>& control_points,
+                                    const gtsam::Values& values,
+                                    const SearchTree& tree,
+                                    size_t k,
+                                    const traits::Pos& old_point) {
+  return interpDeformation(prefix, control_points, values, tree, k, old_point, nullptr);
+}
+
+traits::Pos interpPoint(char prefix,
+                        const std::vector<gtsam::Point3>& control_points,
+                        const gtsam::Values& values,
+                        const SearchTree& tree,
+                        size_t k,
+                        const traits::Pos& vi) {
+  return interpPoint(prefix, control_points, values, tree, k, vi, nullptr);
 }
 
 }  // namespace deformation

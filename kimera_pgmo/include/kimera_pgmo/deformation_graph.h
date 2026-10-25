@@ -40,6 +40,7 @@ class DeformationGraph {
   using Ptr = std::shared_ptr<DeformationGraph>;
   using VertexStamps = std::map<char, std::vector<Timestamp>>;
   using VertexPositions = std::map<char, std::vector<gtsam::Point3>>;
+  using VertexRotations = std::map<char, std::vector<gtsam::Rot3>>;
   using RobotPoseMap = std::map<char, std::vector<gtsam::Pose3>>;
   using RobotTimestampMap = std::map<char, std::vector<Timestamp>>;
   using DeformationCallback = std::function<void(const Eigen::Isometry3d&, size_t)>;
@@ -422,6 +423,11 @@ class DeformationGraph {
   //! Get the timestamps of the vertices corresponding to prefix
   std::vector<Timestamp> getVertexStamps(char prefix) const;
 
+  //! Initial rotations of the vertices corresponding to prefix (mesh nodes added with a
+  //! non-identity rotation, e.g. through a robot-to-world transform), nullptr if all of
+  //! them were added with the identity rotation
+  const std::vector<gtsam::Rot3>* getInitialRotationsVertices(char prefix) const;
+
   bool hasVertexKey(char prefix) const;
 
   //! Get the observed stamp of a vertex
@@ -525,6 +531,8 @@ class DeformationGraph {
 
   VertexPositions vertex_positions_;
   VertexStamps vertex_stamps_;
+  // only prefixes with a non-identity initial rotation (see addNewMeshNode)
+  VertexRotations vertex_rotations_;
 
   // factors
   gtsam::NonlinearFactorGraph nfg_;
@@ -593,7 +601,8 @@ void DeformationGraph::deformPoints(CloudOut& vertices,
                             optimized_values,
                             k,
                             tol_t,
-                            indices_ptr);
+                            indices_ptr,
+                            getInitialRotationsVertices(prefix));
 }
 
 template <typename CloudIn>
@@ -615,8 +624,13 @@ void DeformationGraph::customDeformation(const DeformationCallback& callback,
           const gtsam::Values& values,
           const deformation::SearchTree& octree,
           size_t k) {
-        const auto transform = interpDeformation(
-            prefix, control_points, values, octree, k, traits::get_vertex(points, ii));
+        const auto transform = interpDeformation(prefix,
+                                                 control_points,
+                                                 values,
+                                                 octree,
+                                                 k,
+                                                 traits::get_vertex(points, ii),
+                                                 getInitialRotationsVertices(prefix));
 
         callback(transform, ii);
       },
@@ -650,7 +664,8 @@ void DeformationGraph::deformAllPoints(CloudOut& vertices,
                             values_,
                             k,
                             tol_t,
-                            nullptr);
+                            nullptr,
+                            getInitialRotationsVertices(prefix));
 }
 
 }  // namespace kimera_pgmo

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <gtsam/geometry/Point3.h>
+#include <gtsam/geometry/Rot3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/Values.h>
 
@@ -39,6 +40,22 @@ class SearchTree {
   std::unique_ptr<Impl> impl_;
 };
 
+/*! \brief Interpolate the deformation at a point from its k nearest control points
+ * - control_rotations: initial (pre-optimization) rotations of the control points, if
+ *   they are not the identity (e.g. a control point added with a robot-to-world
+ *   transform). The deformation of a control point is value * initial^-1; without the
+ *   initial rotation an initial value (R0, c) would rotate points by R0 about c.
+ *   nullptr means all initial rotations are the identity.
+ */
+Eigen::Isometry3d interpDeformation(char prefix,
+                                    const std::vector<gtsam::Point3>& control_points,
+                                    const gtsam::Values& values,
+                                    const SearchTree& octree,
+                                    size_t k,
+                                    const traits::Pos& vi,
+                                    const std::vector<gtsam::Rot3>* control_rotations);
+
+//! interpDeformation with identity initial rotations
 Eigen::Isometry3d interpDeformation(char prefix,
                                     const std::vector<gtsam::Point3>& control_points,
                                     const gtsam::Values& values,
@@ -47,6 +64,15 @@ Eigen::Isometry3d interpDeformation(char prefix,
                                     const traits::Pos& vi);
 
 // Calculate new point location from k points
+traits::Pos interpPoint(char prefix,
+                        const std::vector<gtsam::Point3>& control_points,
+                        const gtsam::Values& values,
+                        const SearchTree& octree,
+                        size_t k,
+                        const traits::Pos& vi,
+                        const std::vector<gtsam::Rot3>* control_rotations);
+
+//! interpPoint with identity initial rotations
 traits::Pos interpPoint(char prefix,
                         const std::vector<gtsam::Point3>& control_points,
                         const gtsam::Values& values,
@@ -219,7 +245,8 @@ void deformPoints(CloudOut& new_points,
                   const gtsam::Values& values,
                   size_t k = 4,
                   double tol_t = 10.0,
-                  const std::vector<size_t>* indices = nullptr) {
+                  const std::vector<size_t>* indices = nullptr,
+                  const std::vector<gtsam::Rot3>* control_rotations = nullptr) {
   processPoints(
       [&](const size_t ii,
           char prefix,
@@ -229,7 +256,7 @@ void deformPoints(CloudOut& new_points,
           size_t k) {
         const auto p_old = traits::get_vertex(points, ii);
         const auto p_new =
-            interpPoint(prefix, control_points, values, octree, k, p_old);
+            interpPoint(prefix, control_points, values, octree, k, p_old, control_rotations);
         traits::set_vertex(new_points, ii, p_new);
       },
       points,
